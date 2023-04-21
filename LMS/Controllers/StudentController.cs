@@ -121,7 +121,7 @@ namespace LMS.Controllers
             var query2 =
                 from q in query1  // query1 holds the assignments for the class
                 join s in db.Submissions
-                on new { A = Int32.Parse(q.AssignmentId.ToString()), B = uid } equals new { A = Int32.Parse(s.AssignmentId.ToString()) , B = s.UId }
+                on new { A = (int?)q.AssignmentId, B = uid } equals new { A = s.AssignmentId , B = s.UId }
                 into joined
                 from j in joined.DefaultIfEmpty()
                 select new { aname = q.Name, cname = q.cname, due = q.Due, score = j.Score};
@@ -169,7 +169,7 @@ namespace LMS.Controllers
                 return Json(new { success = false });
 
             var subQuery = from sub in db.Submissions
-                           where sub.AssignmentId == asgnQuery.Single().AssignmentId
+                           where sub.AssignmentId == asgnQuery.Single().AssignmentId && sub.UId == uid
                            select sub;
 
             Submission? updateSub = subQuery.SingleOrDefault();

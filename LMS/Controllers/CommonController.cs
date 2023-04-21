@@ -165,7 +165,7 @@ namespace LMS.Controllers
                 && ac.Name == category && a.Name == asgname && sub.UId == uid
                 select sub.Contents;
 
-            if(asgnQuery.Single() == null)
+            if(asgnQuery.Count() == 0)
                 return Content("");
 
             return Content(asgnQuery.Single().ToString());

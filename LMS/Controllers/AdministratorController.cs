@@ -51,19 +51,14 @@ namespace LMS.Controllers
         /// false if the department already exists, true otherwise.</returns>
         public IActionResult CreateDepartment(string subject, string name)
         {
-            bool exists = false;
             var query =
                from v in db.Departments
+               where v.Subject == subject && v.Name == name
                select new { v.Subject, v.Name };
 
-            foreach (var v in query)
-                if (v.Subject == subject && v.Name == name)
-                    exists = true;
-
-            if (exists == true)
-            {
+            if(query.Count() > 0 || subject == null || name == null)
                 return Json(new { success = false });
-            }
+
             Department d = new Department();
             d.Subject = subject;
             d.Name = name;
