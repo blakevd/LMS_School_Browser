@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using LMS.Models.LMSModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using static System.Formats.Asn1.AsnWriter;
 using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 // For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
@@ -323,6 +324,25 @@ namespace LMS_CustomIdentity.Controllers
             a.Contents = asgcontents;
             a.CategoryId = asgnQuery.Single().CategoryId;
             db.Assignments.Add(a);
+
+            // update all student scores
+            var uidsQuery =
+                from cl in classQuery
+                join e in db.Enrolleds
+                on cl.ClassId equals e.ClassId
+                select new {e.ClassId, e.UId}; 
+
+            foreach (var stud in uidsQuery.ToArray())
+            {
+                double grade = CalcGradeForStudent(subject, num, season, year, stud.UId, stud.ClassId);
+
+                string letter = ToLetterGrade(grade);
+                var enrQuery = from e in db.Enrolleds
+                               where e.UId == stud.UId && e.ClassId == stud.ClassId
+                               select e;
+
+                enrQuery.ToArray()[0].Grade = letter;
+            }
             db.SaveChanges();
             return Json(new { success = true });
         }
@@ -371,6 +391,97 @@ namespace LMS_CustomIdentity.Controllers
             return Json(subQuery.ToArray());
         }
 
+        // helper
+        private double CalcGradeForStudent(string subject, int num, string season, int year, string uid, int classId)
+        {
+            var allCatQuery =
+                from ac in db.AssignmentCategories
+                where ac.ClassId == classId
+                select ac;
+
+            double total = 0;
+            int totalWeight = 0;
+            foreach (var v in allCatQuery.ToList())
+            {
+                if (v.Weight.HasValue)
+                    totalWeight += (int)v.Weight;
+
+                double? catGrade = CalcGradeForStudentCategory(subject, num, season, year, uid, v.Name);
+                if (catGrade.HasValue)
+                    total += (double)catGrade;
+                System.Diagnostics.Debug.WriteLine(total);
+            }
+
+            System.Diagnostics.Debug.WriteLine(total);
+            return total * (100 / totalWeight);
+        }
+
+        // helper method
+        private double? CalcGradeForStudentCategory(string subject, int num, string season, int year, string uid, string category)
+        {
+            var query1 =
+                from course in db.Courses
+                join cl in db.Classes
+                on course.CourseId equals cl.CourseId
+
+                join ac in db.AssignmentCategories
+                on cl.ClassId equals ac.ClassId
+
+                join a in db.Assignments
+                on ac.CategoryId equals a.CategoryId
+                where course.Subject == subject && course.Number == num && cl.Year == year && cl.Semester == season && ac.Name == category
+                select new { cname = ac.Name, a.AssignmentId, a.Contents, a.Name, a.Due, a.Points, weight = ac.Weight };
+
+            var query2 =
+                from q in query1  // query1 holds the assignments for the class
+                join s in db.Submissions
+                on new { A = (int?)q.AssignmentId, B = uid } equals new { A = s.AssignmentId, B = s.UId }
+                into joined
+                from j in joined.DefaultIfEmpty()
+                select new { aname = q.Name, cname = q.cname, due = q.Due, score = j.Score, points = q.Points, weight = q.weight };
+
+            double totalS = 0;
+            double totalP = 0;
+            foreach (var v in query2)
+            {
+                if (v.score.HasValue) // not a null score
+                    totalS += (double)v.score;
+             
+                if(v.points.HasValue)
+                    totalP += (double)v.points;
+            }
+
+            return (totalS / totalP) * query2.First().weight;
+        }
+
+        // Helper method to grade assignments
+        private string ToLetterGrade(double g)
+        {
+            if (g >= 93)
+                return "A";
+            else if (g >= 90)
+                return "A-";
+            else if (g >= 87)
+                return "B+";
+            else if (g >= 83)
+                return "B";
+            else if (g >= 80)
+                return "B-";
+            else if (g >= 77)
+                return "C+";
+            else if (g >= 73)
+                return "C";
+            else if (g >= 70)
+                return "C-";
+            else if (g >= 67)
+                return "D+";
+            else if (g >= 63)
+                return "D";
+            else if (g >= 60)
+                return "D-";
+            else
+                return "E";
+        }
 
         /// <summary>
         /// Set the score of an assignment submission
@@ -402,11 +513,22 @@ namespace LMS_CustomIdentity.Controllers
 
                 where course.Subject == subject && course.Number == num && cl.Year == year && cl.Semester == season
                 && ac.Name == category && a.Name == asgname && sub.UId == uid
-                select sub;
+                select new {sub, a, ac };
 
-            if (sQuery.Single() != null)
+            var student = sQuery.Single();
+            if (student != null)
             {
-                sQuery.Single().Score = (uint)score;
+                student.sub.Score = (uint)score; // update student score
+                db.SaveChanges();
+
+                double grade = CalcGradeForStudent(subject, num, season, year, uid, student.ac.ClassId);
+
+                string letter = ToLetterGrade(grade);
+                var enrQuery = from e in db.Enrolleds
+                               where e.UId == uid && e.ClassId == student.ac.ClassId
+                               select e;
+
+                enrQuery.ToArray()[0].Grade = letter;
                 db.SaveChanges();
                 return Json(new { success = true });
             }
