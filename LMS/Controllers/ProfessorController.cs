@@ -409,10 +409,8 @@ namespace LMS_CustomIdentity.Controllers
                 double? catGrade = CalcGradeForStudentCategory(subject, num, season, year, uid, v.Name);
                 if (catGrade.HasValue)
                     total += (double)catGrade;
-                System.Diagnostics.Debug.WriteLine(total);
             }
 
-            System.Diagnostics.Debug.WriteLine(total);
             return total * (100 / totalWeight);
         }
 
